@@ -4,7 +4,7 @@ import csv
 import requests
 import json
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageStat
 from io import BytesIO
 from multiprocessing import Pool
 from selenium import webdriver
@@ -31,6 +31,7 @@ def create_driver():
 
 def scroll_and_collect_image_urls(driver, emotion: list[str], max_images: int) -> list[str]:
     """Прокручивает страницу Pinterest и собирает ссылки на изображения."""
+    sleep_counter = 0
     search_url = f"https://www.pinterest.com/search/pins/?q={emotion}_vibe"
     driver.get(search_url)
     image_urls = set()
@@ -39,6 +40,7 @@ def scroll_and_collect_image_urls(driver, emotion: list[str], max_images: int) -
     while len(image_urls) < max_images:
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(5)
+        sleep_counter += 1
 
         try:
             images = driver.find_elements(By.TAG_NAME, "img")
@@ -62,7 +64,7 @@ def scroll_and_collect_image_urls(driver, emotion: list[str], max_images: int) -
         last_height = new_height
 
     print(f'Для эмоции {emotion} было найдено {len(image_urls)} ссылок')
-    return list(image_urls)[:max_images]
+    return list(image_urls)[:max_images], sleep_counter
 
 
 def download_and_save_images(emotion: str):
@@ -72,7 +74,7 @@ def download_and_save_images(emotion: str):
     driver = None
     try:
         driver = create_driver()
-        image_urls = scroll_and_collect_image_urls(driver, emotion, IMAGES_PER_EMOTION)
+        image_urls, sleep_counter = scroll_and_collect_image_urls(driver, emotion, IMAGES_PER_EMOTION)
     except WebDriverException as e:
         print(f"[{emotion}] Ошибка WebDriver: {e}")
         return
@@ -102,6 +104,7 @@ def download_and_save_images(emotion: str):
             continue
 
     print(f'Для эмоции {emotion} было сохранено {count} файлов')
+    return sleep_counter
 
 
 def run_experiment(process_count: int) -> float:
@@ -109,9 +112,9 @@ def run_experiment(process_count: int) -> float:
     print(f"\nЗапуск с {process_count} процессами...")
     start = time.perf_counter()
     with Pool(process_count) as pool:
-        pool.map(download_and_save_images, EMOTIONS)
+        sleep_counter = pool.map(download_and_save_images, EMOTIONS)
     end = time.perf_counter()
-    duration = round(end - start, 2)
+    duration = round(end - start - max(sleep_counter), 2)
     print(f"Время выполнения: {duration} сек.")
     return duration
 
@@ -122,13 +125,18 @@ def take_param(path: str) -> None:
     new_path = f'annotation/{folder_name}/{file_name.replace('jpg', 'json')}'
     img = Image.open(path)
     img_gray = img.convert('L')
+    img_hsv = img.convert('HSV')
     img_numpy = np.array(img_gray)
     height, weight = img_numpy.shape
     brightness = round(np.sum(img_numpy) / (height * weight * 255), 2)
+    contrast = round(ImageStat.Stat(img_gray).stddev[0], 2)
+    saturation = round(ImageStat.Stat(img_hsv).mean[1], 2)
     info = {
         'height': height,
         'weight': weight,
         'brightness': brightness,
+        'contrast': contrast,
+        'saturation': saturation,
     }
     with open(new_path, 'w', encoding='utf-8') as f:
         json.dump(info, f, indent=2)
