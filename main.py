@@ -63,7 +63,6 @@ def scroll_and_collect_image_urls(driver, emotion: list[str], max_images: int) -
             break
         last_height = new_height
 
-    print(f'Для эмоции {emotion} было найдено {len(image_urls)} ссылок')
     return list(image_urls)[:max_images], sleep_counter
 
 
@@ -103,7 +102,6 @@ def download_and_save_images(emotion: str):
                 print(e, file=f)
             continue
 
-    print(f'Для эмоции {emotion} было сохранено {count} файлов')
     return sleep_counter
 
 
@@ -115,14 +113,16 @@ def run_experiment(process_count: int) -> float:
         sleep_counter = pool.map(download_and_save_images, EMOTIONS)
     end = time.perf_counter()
     duration = round(end - start - max(sleep_counter), 2)
-    print(f"Время выполнения: {duration} сек.")
     return duration
 
 
 def take_param(path: str) -> None:
     """Получает и сохраняет информацию об изображениях"""
-    folder_name, file_name = path.split('/')[1:]
+    parts = os.path.normpath(path).split(os.sep)
+    folder_name = parts[-2]
+    file_name = parts[-1]
     new_path = f'annotation/{folder_name}/{file_name.replace('jpg', 'json')}'
+    
     img = Image.open(path)
     img_gray = img.convert('L')
     img_hsv = img.convert('HSV')
@@ -140,6 +140,7 @@ def take_param(path: str) -> None:
     }
     with open(new_path, 'w', encoding='utf-8') as f:
         json.dump(info, f, indent=2)
+    
 
 def process_images(image_path: list[str], num_processes: int) -> None:
     """Обрабатывает список изображений с использованием нескольких процессов."""
@@ -160,14 +161,20 @@ if __name__ == "__main__":
     results = []
     for count in PROCESS_COUNTS:
         duration = run_experiment(count)
-        results.append((count, duration))
+        start = time.perf_counter()
         for emotion in EMOTIONS:
             os.makedirs(f'annotation/{emotion}', exist_ok=True)
             folder_path = f'content/{emotion}'
-            for file_name in os.listdir(folder_path):
-                image_path = f'{folder_path}/{file_name}'
-                take_param(image_path)
+            image_paths = [os.path.join(folder_path, file_name) 
+                         for file_name in os.listdir(folder_path) 
+                         if file_name.endswith('.jpg')]
+            process_images(image_paths, count)
 
+        end = time.perf_counter()
+        duration += (end - start)
+        duration = round(duration, 2)
+        print(f"Время работы программы: {duration} сек.")
+        results.append((count, duration))
 
     log_results(results)
     print("\nРезультаты сохранены")
