@@ -4,6 +4,7 @@ import csv
 import requests
 import json
 import numpy as np
+import shutil
 from PIL import Image, ImageStat
 from io import BytesIO
 from multiprocessing import Pool
@@ -15,8 +16,8 @@ from selenium.common.exceptions import WebDriverException
 
 
 EMOTIONS = ["happiness", "sadness", "disgust", "fear", "surprise", "anger"]
-IMAGES_PER_EMOTION = 10
-PROCESS_COUNTS = [6, 9]
+IMAGES_PER_EMOTION = 100
+PROCESS_COUNTS = [1, 2, 3, 4, 5, 6]
 PERFORMANCE_LOG = "performance_log.csv"
 
 def create_driver():
@@ -160,6 +161,8 @@ def log_results(results):
 if __name__ == "__main__":
     results = []
     for count in PROCESS_COUNTS:
+        shutil.rmtree('content')
+        shutil.rmtree('annotation')
         duration = run_experiment(count)
         start = time.perf_counter()
         for emotion in EMOTIONS:
